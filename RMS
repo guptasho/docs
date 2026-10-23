@@ -1,0 +1,136 @@
+RMS - Resource metadata service
+
+RMS is a application where organisation and its leaders could track all the cloud assets used within the organisations in a single app.
+Cloud resources like:
+1. github (Org, repo, branches PR, etc)
+2. Jira (Project, stories, epics)
+3. Jenkins (Pipeline, job, etc)
+4. Kubernetes (Namespace, deployment, service, etc)
+5. AWS (EC2, Region, vpc, subnet, instance, etc)
+6. AWS Cost and usage (Monthly cost, per service cost, per resource cost, etc)
+
+
+Frontend Tech stack adn architecture: 
+- ReactJS, Redux, Redux-saga, Bootstrap 5, TypeScript, 
+
+Backend Tech stack and Architecture:
+- Node 18+, npm, webpack, etc
+- ExpressJS, JWT, DynamoDB, Lambda, SQS, API Gateway, EC2, S3, CloudFront,
+- REST API architecture
+- TypeScript
+
+How RMS works:
+
+
+RMS system architecture:
+
+The system is supposed to be developed in 3 environments, dev, test, prod. The app should be built on AWS native services as much as possible. docker containers should be used to create the image and used Jfrog to store the artifacts.  A jenkins pipeline, docker yaml, kubernetes yaml files should be created to deploy the application in the respective environments. 
+
+How the docker container is started in an environment:
+- A jenkins pipeline, docker yaml, kubernetes yaml files should be created to deploy the application in the respective environments.  
+
+In the dev environment, a jenkins pipeline is already created to deploy the application in the dev environment. 
+
+Kubernetes created several replicas of the application, each with its own services like: 
+- Frontend - ReactJS
+- Backend - node, express
+
+Redis cache is used to cache the store data per asset type and it will be write through for a particular asset type when the data is updated in the backend using the collector service or via API calls to RMS.
+
+API Gateway and load balancer would be managed by AWS and configured to route traffic to the frontend and backend services based on the path. 
+Cloud front is used to serve the static content of the frontend.
+
+Dynamodb is used to store the data. DynamoDB is a NoSQL database that is used to store the data in a key-value format.
+
+Sentry is used for error monitoring and logging.
+ELK is used for log monitoring.
+Pagerduty is used for incident management.
+Single signon using okta
+
+
+
+Collector Service: Java, Kinesis, SQS, Lambda, Step functions
+- The collector service is a service that will collect all the assets of the organisation. It will be a lambda function that will be triggered by a scheduler or an event. Data for few assets can be retrieved via pull machanism, and others are push mechanism from the respective Cloud platform.
+
+Some assets are available only via API calls to the respective platform (e.g. AWS, Jira, etc). However, some assets are available only via logs (e.g. Kubernetes, etc).
+
+Collector uses an API gateway to expose endpoints to be called by external services, and a lambda function to validate 
+the incoming requests.
+The lambda function will then push the data to a kinesis stream, the stream will have separate shards for each 
+asset type, to maintain the data in a structured sequential manner.
+
+a java based application consumes from these streams and based on the asset type, it will process the data send REST API calls to RMS POST /assets API which would make the necessary changes in the dynamodb tables.
+
+The Java app, uses threads to consume records from the stream, for each record it would call RMS rest api. 
+
+Each asset type will have its own thread pool to consume from the stream.
+
+For pull mechanism, the lambda function will trigger the step function, which will invoke the java lambda function which would fetch the assets from the respective platforms and push them to the kinesis stream.
+
+The consumer throttles the API requests based on the rate limit of the respective platform. 
+
+To handle AWS cost and usage data, a batch job is run every day to fetch the cost and usage data from the AWS API and push them to the kinesis stream.
+
+
+1. Github (API) - webhooks - PUSH
+2. Jira (API) - webhooks - PUSH
+3. Jenkins (Logs) - PULL
+4. Kubernetes (Logs) - PUSH
+5. AWS (API) - PULL
+6. AWS Cost and usage (API) - PULL
+
+
+Dynamodb table structure:
+
+- No data deletion allowed, only softdelete is allowed
+- Every table will have following columns:
+    - CreatedAt, CreatedBy, UpdatedAt, UpdatedBy, DeletedAt, DeletedBy, IsDeleted
+
+Table1: AssetTypes (This table will hold all the asset types of the organisation)
+
+Example:
+AssetTypeID,
+AssetTypeName,
+AssetTypeDescription,
+AssetTypeIcon
+AssetTypeStatus
+AssetTypeCreatedAt
+AssetTypeUpdatedAt
+AssetTypeDeleted
+AssetTypeDeletedAt
+
+Table 2: AssetAttributes (This table helps identify the properties and their types allowed for a particular asset of an assettype, which would be used to validate the type while rendering on the screen and if any update is allowed, or the field is mandatory etc)
+
+Example:
+AssetTypeID
+AssetAttributeID
+AssetAttributeName
+AssetAttributeDescription
+AssetAttributeType
+AssetAttributeValue
+AssetAttributeStatus
+AssetAttributeCreatedAt
+AssetAttributeUpdatedAt
+AssetAttributeDeleted
+AssetAttributeDeletedAt
+IsRequired
+IsReadOnly
+
+
+Table 3: Assets (This table will hold all the assets of the organisation)
+Example:
+AssetId,
+AssetName,
+AssetType,
+AssetDescription,
+AssetOwner,
+AssetCost,
+AssetStatus,
+AssetCreatedAt,
+AssetUpdatedAt,
+AssetDeleted,
+AssetDeletedAt
+
+
+
+
